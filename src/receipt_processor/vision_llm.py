@@ -42,6 +42,10 @@ class VisionExtractor(Protocol):
         """Extract receipt fields from an image."""
 
 
+class VisionBackendError(RuntimeError):
+    """An HTTP vision backend rejected a request."""
+
+
 class CommandVisionExtractor:
     """Run a local command that accepts prompt/image JSON on stdin."""
 
@@ -255,8 +259,15 @@ def post_json(
         method="POST",
     )
     started_at = time.monotonic()
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-        body = response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            body = response.read()
+    except urllib.error.HTTPError as exc:
+        detail = _http_error_detail(exc)
+        message = f"Vision LLM request failed with HTTP {exc.code}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise VisionBackendError(message) from exc
     # urlopen's timeout is per socket operation, so keep a simple total-time guard too.
     if time.monotonic() - started_at > timeout_seconds:
         return {}
@@ -270,6 +281,23 @@ def _ollama_generate_url(base_url: str) -> str:
     if stripped.endswith("/api/generate"):
         return stripped
     return f"{stripped}/api/generate"
+
+
+def _http_error_detail(error: urllib.error.HTTPError) -> str:
+    """Return a useful provider error without exposing response headers."""
+    try:
+        body = error.read().decode("utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+    if not body:
+        return ""
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return body
+    if isinstance(data, dict) and data.get("error"):
+        return str(data["error"])
+    return body
 
 
 def validate_local_base_url(base_url: str, *, allow_remote: bool = False) -> None:

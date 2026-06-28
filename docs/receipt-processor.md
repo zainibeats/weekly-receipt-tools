@@ -48,6 +48,9 @@ RECEIPT_VISION_MAX_IMAGE_EDGE=768
 
 Use `RECEIPT_VISION_PROVIDER=ollama` with
 `RECEIPT_VISION_BASE_URL=http://127.0.0.1:11434` for Ollama.
+The selected Ollama model must list `vision` under `Capabilities` in
+`ollama show <model>`. A model imported without its vision projector can handle
+text prompts but Ollama will reject receipt images with HTTP 400.
 
 The processor rejects remote HTTP endpoints by default so receipt images stay on
 local or private-network model servers. Pass `--vision-llm-allow-remote` only

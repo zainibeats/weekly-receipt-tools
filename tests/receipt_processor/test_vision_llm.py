@@ -1,8 +1,12 @@
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+import urllib.error
+
+import pytest
 
 from receipt_processor import vision_llm
-from receipt_processor.vision_llm import EncodedImage, OllamaVisionExtractor
+from receipt_processor.vision_llm import EncodedImage, OllamaVisionExtractor, VisionBackendError
 
 
 class FakePillowImage:
@@ -86,6 +90,24 @@ def test_ollama_parses_thinking_field_when_response_is_empty(monkeypatch) -> Non
     assert result.total == 12.34
     assert result.currency == "USD"
     assert result.merchant == "Store"
+
+
+def test_post_json_preserves_provider_http_error(monkeypatch) -> None:
+    error = urllib.error.HTTPError(
+        "http://localhost:11434/api/generate",
+        400,
+        "Bad Request",
+        {},
+        BytesIO(b'{"error":"model does not support images"}'),
+    )
+    monkeypatch.setattr(vision_llm.urllib.request, "urlopen", lambda request, timeout: (_ for _ in ()).throw(error))
+
+    with pytest.raises(VisionBackendError, match=r"HTTP 400: model does not support images"):
+        vision_llm.post_json(
+            "http://localhost:11434/api/generate",
+            {"model": "text-only"},
+            timeout_seconds=10,
+        )
 
 
 def test_encode_image_registers_heif_support_for_heic(monkeypatch) -> None:
