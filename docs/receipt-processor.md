@@ -34,6 +34,29 @@ Constrain accepted receipt dates:
 receipt-process path/to/receipts --min-date 2026-06-01 --max-date 2026-06-30
 ```
 
+## OCR Fallback
+
+Install the optional local OCR dependencies:
+
+```bash
+python -m pip install -e ".[ocr]"
+```
+
+Enable OCR only after missing or invalid vision results:
+
+```bash
+receipt-process path/to/receipts --ocr-fallback
+```
+
+Set `RECEIPT_OCR_FALLBACK=true` to enable it through `.env`. RapidOCR and its
+ONNX Runtime engine are loaded lazily, so valid vision results do not pay their
+startup or memory cost. OCR runs against the original image and two enhanced
+variants.
+
+OCR parsing is intentionally conservative. It accepts US `MM/DD` dates, fills
+missing years from the machine's local calendar year, prefers explicitly
+labeled final totals, and leaves conflicting candidates for manual review.
+
 ## Local Model Config
 
 Example `.env` values:
@@ -44,6 +67,7 @@ RECEIPT_VISION_BASE_URL=http://127.0.0.1:8000/v1
 RECEIPT_VISION_MODEL=mistralai/ministral-3-3b
 RECEIPT_VISION_TIMEOUT=90
 RECEIPT_VISION_MAX_IMAGE_EDGE=768
+RECEIPT_OCR_FALLBACK=false
 ```
 
 Use `RECEIPT_VISION_PROVIDER=ollama` with

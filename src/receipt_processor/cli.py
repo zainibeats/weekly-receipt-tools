@@ -8,6 +8,7 @@ from pathlib import Path
 
 from receipt_processor.config import env_bool, env_float, env_int, load_env_file
 from receipt_processor.models import ProcessingFailure
+from receipt_processor.ocr import RapidOCRExtractor
 from receipt_processor.pipeline import process_directory
 from receipt_processor.storage import write_processing_details_json
 from receipt_processor.vision_llm import (
@@ -75,6 +76,12 @@ def main() -> None:
         default=env_bool("RECEIPT_VISION_ALLOW_REMOTE"),
         help="Allow non-local vision LLM endpoints. Not recommended for receipt images.",
     )
+    parser.add_argument(
+        "--ocr-fallback",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("RECEIPT_OCR_FALLBACK"),
+        help="Use local RapidOCR after a missing or invalid vision result.",
+    )
     args = parser.parse_args()
     vision_extractor = _build_vision_extractor(args)
     daily_totals, receipts, failures = process_directory(
@@ -82,6 +89,7 @@ def main() -> None:
         vision_extractor,
         min_date=args.min_date,
         max_date=args.max_date,
+        ocr_extractor=RapidOCRExtractor() if args.ocr_fallback else None,
     )
 
     args.output.write_text(json.dumps(daily_totals, indent=2, sort_keys=True) + "\n", encoding="utf-8")

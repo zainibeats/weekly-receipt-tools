@@ -11,12 +11,15 @@ single-purpose modules handle extraction, validation, aggregation, and output.
 2. `pipeline.py` finds supported image files in deterministic order.
 3. `vision_llm.py` resizes each image, sends it to the configured backend, and
    parses the model response into normalized fields.
-4. `validation.py` rejects missing dates/totals, invalid ISO dates, out-of-range
+4. When enabled, `ocr.py` runs RapidOCR on the original image and two enhanced
+   variants after a missing or invalid vision result.
+5. `ocr_parser.py` selects one unambiguous US date and final-total candidate.
+6. `validation.py` rejects missing dates/totals, invalid ISO dates, out-of-range
    dates, and non-positive or unusually large totals.
-5. `models.py` stores accepted receipts and processing failures.
-6. `aggregation.py` sums accepted totals by day.
-7. `storage.py` writes detailed receipt and failure JSON.
-8. `cli.py` writes daily totals JSON and prints a human-readable summary.
+7. `models.py` stores accepted receipts and processing failures.
+8. `aggregation.py` sums accepted totals by day.
+9. `storage.py` writes detailed receipt and failure JSON.
+10. `cli.py` writes daily totals JSON and prints a human-readable summary.
 
 ## Module Map
 
@@ -25,6 +28,8 @@ single-purpose modules handle extraction, validation, aggregation, and output.
   console summary formatting.
 - `config.py`: simple `.env` loading and environment value parsing.
 - `models.py`: dataclasses for accepted receipts and failures.
+- `ocr.py`: optional lazy RapidOCR integration and image enhancement.
+- `ocr_parser.py`: deterministic OCR date and total candidate parsing.
 - `pipeline.py`: image discovery and end-to-end receipt processing.
 - `storage.py`: JSON detail output.
 - `validation.py`: date and total validation rules.
