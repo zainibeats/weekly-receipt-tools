@@ -20,7 +20,9 @@ VISION_PROMPT = """Extract the transaction date and final charged total from thi
 Return strict JSON only.
 Use null when a field is not visible.
 Do not infer values that are not present on the receipt.
-Expected shape: {"date": "YYYY-MM-DD", "total": 12.34, "currency": "USD", "merchant": "store", "confidence": 0.82}
+Format a date with a visible year as YYYY-MM-DD. If only month and day are visible, use MM-DD and do not invent a year.
+Example with a year: {"date": "2026-07-14", "total": 12.34, "currency": "USD", "merchant": "store", "confidence": 0.82}
+Example without a year: {"date": "07-14", "total": 12.34, "currency": "USD", "merchant": "store", "confidence": 0.82}
 """
 
 HEIF_EXTENSIONS = {".heic", ".heif"}

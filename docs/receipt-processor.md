@@ -53,9 +53,11 @@ ONNX Runtime engine are loaded lazily, so valid vision results do not pay their
 startup or memory cost. OCR runs against the original image and two enhanced
 variants.
 
-OCR parsing is intentionally conservative. It accepts US `MM/DD` dates, fills
-missing years from the machine's local calendar year, prefers explicitly
-labeled final totals, and leaves conflicting candidates for manual review.
+Date parsing is intentionally conservative. For dates without a year, the
+processor first looks for an exact month/day match among fully dated receipts,
+then uses the batch year only when it is unambiguous. It never substitutes the
+machine's local year. OCR prefers explicitly labeled final totals and leaves
+conflicting candidates for manual review.
 
 ## Local Model Config
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 
+from receipt_processor.date_inference import infer_yearless_date
 from receipt_processor.ocr import OCRLine, OCRVariant
 from receipt_processor.validation import is_valid_date, is_valid_total
 
@@ -46,6 +48,7 @@ def parse_ocr_receipt(
     variants: tuple[OCRVariant, ...],
     *,
     reference_date: date | None = None,
+    reference_dates: Iterable[date] = (),
     max_total: float = 1000.0,
     min_date: date | None = None,
     max_date: date | None = None,
@@ -55,8 +58,10 @@ def parse_ocr_receipt(
     if not lines:
         return OCRParseResult(None, "OCR found no usable text")
 
-    reference_date = reference_date or date.today()
-    dates = _date_candidates(lines, reference_date, min_date=min_date, max_date=max_date)
+    references = tuple(reference_dates)
+    if reference_date is not None:
+        references += (reference_date,)
+    dates = _date_candidates(lines, references, min_date=min_date, max_date=max_date)
     if len(dates) != 1:
         detail = "no valid date" if not dates else "ambiguous date candidates"
         return OCRParseResult(None, f"OCR candidates were ambiguous: {detail}")
@@ -80,7 +85,7 @@ def parse_ocr_receipt(
 
 def _date_candidates(
     lines: list[OCRLine],
-    reference_date: date,
+    reference_dates: tuple[date, ...],
     *,
     min_date: date | None,
     max_date: date | None,
@@ -103,10 +108,20 @@ def _date_candidates(
             if any(_overlaps(match.span(), span) for span in spans):
                 continue
             raw_year = match["year"]
-            year = reference_date.year if raw_year is None else _normalize_year(raw_year)
+            if raw_year is None:
+                inferred = infer_yearless_date(
+                    int(match["month"]),
+                    int(match["day"]),
+                    reference_dates,
+                    min_date=min_date,
+                    max_date=max_date,
+                )
+                if inferred is not None:
+                    _keep_best(candidates, inferred.isoformat(), line.confidence)
+                continue
             _add_date_candidate(
                 candidates,
-                year,
+                _normalize_year(raw_year),
                 int(match["month"]),
                 int(match["day"]),
                 line.confidence,

@@ -45,6 +45,49 @@ def test_pipeline_uses_vision_llm(tmp_path) -> None:
     assert [path.name for path in vision.calls] == ["a.jpg", "b.jpg"]
 
 
+def test_pipeline_resolves_yearless_vision_date_from_exact_peer(tmp_path) -> None:
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+    (receipt_dir / "a.jpg").write_bytes(b"fake")
+    (receipt_dir / "b.jpg").write_bytes(b"fake")
+    vision = StubVisionExtractor(
+        {
+            "a.jpg": VisionExtraction(date="07-14", total=12.34, confidence=0.8),
+            "b.jpg": VisionExtraction(date="2026-07-14", total=7.66, confidence=0.7),
+        }
+    )
+
+    daily_totals, receipts, failures = process_directory(receipt_dir, vision)
+
+    assert daily_totals == {"2026-07-14": 20.0}
+    assert [receipt.date for receipt in receipts] == ["2026-07-14", "2026-07-14"]
+    assert failures == []
+
+
+def test_pipeline_resolves_yearless_vision_date_from_unambiguous_batch_year(tmp_path) -> None:
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+    (receipt_dir / "a.jpg").write_bytes(b"fake")
+    (receipt_dir / "b.jpg").write_bytes(b"fake")
+    (receipt_dir / "c.jpg").write_bytes(b"fake")
+    vision = StubVisionExtractor(
+        {
+            "a.jpg": VisionExtraction(date="07/14", total=10.0),
+            "b.jpg": VisionExtraction(date="2026-07-13", total=10.0),
+            "c.jpg": VisionExtraction(date="2026-07-15", total=10.0),
+        }
+    )
+
+    daily_totals, receipts, failures = process_directory(receipt_dir, vision)
+
+    assert daily_totals == {
+        "2026-07-13": 10.0,
+        "2026-07-14": 10.0,
+        "2026-07-15": 10.0,
+    }
+    assert failures == []
+
+
 def test_pipeline_includes_heic_and_heif_images(tmp_path) -> None:
     receipt_dir = tmp_path / "receipts"
     receipt_dir.mkdir()

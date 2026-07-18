@@ -9,12 +9,39 @@ def _parse(*lines: str, reference_date: date = date(2026, 7, 14)):
     return parse_ocr_receipt((variant,), reference_date=reference_date)
 
 
-def test_parser_completes_month_day_with_local_year() -> None:
+def test_parser_completes_month_day_with_reference_year() -> None:
     result = _parse("DATE 07/09", "TOTAL $23.76")
 
     assert result.extraction is not None
     assert result.extraction.date == "2026-07-09"
     assert result.extraction.total == 23.76
+
+
+def test_parser_does_not_use_local_year_without_receipt_context() -> None:
+    variant = (
+        OCRLine(text="DATE 07/09", confidence=0.9),
+        OCRLine(text="TOTAL 23.76", confidence=0.9),
+    )
+
+    result = parse_ocr_receipt((variant,))
+
+    assert result.extraction is None
+    assert result.reason == "OCR candidates were ambiguous: no valid date"
+
+
+def test_parser_prefers_exact_month_day_reference() -> None:
+    variant = (
+        OCRLine(text="DATE 07/14", confidence=0.9),
+        OCRLine(text="TOTAL 23.76", confidence=0.9),
+    )
+
+    result = parse_ocr_receipt(
+        (variant,),
+        reference_dates=(date(2025, 7, 13), date(2026, 7, 14), date(2025, 7, 15)),
+    )
+
+    assert result.extraction is not None
+    assert result.extraction.date == "2026-07-14"
 
 
 def test_parser_retains_full_date_year() -> None:

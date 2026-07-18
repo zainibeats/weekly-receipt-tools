@@ -11,15 +11,17 @@ single-purpose modules handle extraction, validation, aggregation, and output.
 2. `pipeline.py` finds supported image files in deterministic order.
 3. `vision_llm.py` resizes each image, sends it to the configured backend, and
    parses the model response into normalized fields.
-4. When enabled, `ocr.py` runs RapidOCR on the original image and two enhanced
+4. `date_inference.py` resolves yearless dates from exact month/day peers or an
+   otherwise unambiguous batch year.
+5. When enabled, `ocr.py` runs RapidOCR on the original image and two enhanced
    variants after a missing or invalid vision result.
-5. `ocr_parser.py` selects one unambiguous US date and final-total candidate.
-6. `validation.py` rejects missing dates/totals, invalid ISO dates, out-of-range
+6. `ocr_parser.py` selects one unambiguous US date and final-total candidate.
+7. `validation.py` rejects missing dates/totals, invalid ISO dates, out-of-range
    dates, and non-positive or unusually large totals.
-7. `models.py` stores accepted receipts and processing failures.
-8. `aggregation.py` sums accepted totals by day.
-9. `storage.py` writes detailed receipt and failure JSON.
-10. `cli.py` writes daily totals JSON and prints a human-readable summary.
+8. `models.py` stores accepted receipts and processing failures.
+9. `aggregation.py` sums accepted totals by day.
+10. `storage.py` writes detailed receipt and failure JSON.
+11. `cli.py` writes daily totals JSON and prints a human-readable summary.
 
 ## Module Map
 
@@ -27,6 +29,7 @@ single-purpose modules handle extraction, validation, aggregation, and output.
 - `cli.py`: command line interface, environment loading, provider selection, and
   console summary formatting.
 - `config.py`: simple `.env` loading and environment value parsing.
+- `date_inference.py`: conservative year inference from other receipt dates.
 - `models.py`: dataclasses for accepted receipts and failures.
 - `ocr.py`: optional lazy RapidOCR integration and image enhancement.
 - `ocr_parser.py`: deterministic OCR date and total candidate parsing.
