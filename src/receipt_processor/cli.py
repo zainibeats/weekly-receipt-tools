@@ -72,7 +72,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--vision-llm-allow-remote",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=env_bool("RECEIPT_VISION_ALLOW_REMOTE"),
         help="Allow non-local vision LLM endpoints. Not recommended for receipt images.",
     )

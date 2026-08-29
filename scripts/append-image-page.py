@@ -68,14 +68,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--allow-unrestricted-output",
-        action="store_true",
-        help=(
-            "Deprecated compatibility option. Owner-restricted PDFs are rewritten "
-            "as unrestricted output by default."
-        ),
-    )
-    parser.add_argument(
         "--refuse-unrestricted-output",
         action="store_true",
         help=(
@@ -175,16 +167,6 @@ def resolve_output_path(output: str | None, image_path: Path) -> Path:
     return Path(output).expanduser().resolve()
 
 
-def is_relative_to(path: Path, parent: Path) -> bool:
-    """Return whether path is inside parent, including compatibility with Python 3.10."""
-
-    try:
-        path.relative_to(parent)
-    except ValueError:
-        return False
-    return True
-
-
 def first_missing_parent(path: Path) -> Path | None:
     """Return the highest missing directory needed for path, if any."""
 
@@ -224,7 +206,7 @@ def validate_output_path_safety(
             "filename or pass --allow-risky-output-path if this is intentional."
         )
 
-    if not any(is_relative_to(output_path, root) for root in allowed_roots):
+    if not any(output_path.is_relative_to(root) for root in allowed_roots):
         roots = ", ".join(str(root) for root in allowed_roots)
         fail(
             f"Output path must be inside the image or PDF folder ({roots}). "

@@ -134,3 +134,38 @@ def test_encode_image_does_not_register_heif_support_for_jpeg(monkeypatch) -> No
 
     assert calls == []
     assert encoded == EncodedImage("anBlZw==", "image/jpeg")
+
+
+def test_post_json_reports_a_slow_response_as_a_timeout(monkeypatch) -> None:
+    class SlowResponse:
+        def __enter__(self) -> "SlowResponse":
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            monkeypatch.setattr(vision_llm.time, "monotonic", lambda: 100.0)
+            return b'{"response": "{}"}'
+
+    monkeypatch.setattr(vision_llm.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(vision_llm.urllib.request, "urlopen", lambda request, timeout: SlowResponse())
+
+    with pytest.raises(VisionBackendError, match=r"exceeded the 10 second timeout"):
+        vision_llm.post_json("http://localhost:11434/api/generate", {}, timeout_seconds=10)
+
+
+def test_parse_vision_json_reads_the_first_object_from_wrapped_output() -> None:
+    result = vision_llm.parse_vision_json(
+        'Here is the receipt:\n```json\n{"date": "2026-06-01", "total": 12.34}\n```\n'
+        'and a second guess {"date": "2026-06-02", "total": 99.99}'
+    )
+
+    assert result is not None
+    assert result.date == "2026-06-01"
+    assert result.total == 12.34
+
+
+def test_parse_vision_json_rejects_output_without_an_object() -> None:
+    assert vision_llm.parse_vision_json("no JSON here") is None
+    assert vision_llm.parse_vision_json('{"date": "2026-06-01"}') is None

@@ -309,7 +309,6 @@ class AtomicWriteTests(unittest.TestCase):
                 dpi=200,
                 overwrite=False,
                 allow_risky_output_path=False,
-                allow_unrestricted_output=False,
                 refuse_unrestricted_output=False,
                 max_image_pixels=80_000_000,
                 max_pdf_pages=10,

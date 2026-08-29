@@ -113,7 +113,7 @@ class OllamaVisionExtractor:
                 "options": {"temperature": 0, "num_predict": 200},
             }
             data = post_json(_ollama_generate_url(self._base_url), payload, timeout_seconds=self._timeout_seconds)
-        except (OSError, ValueError, urllib.error.URLError):
+        except (OSError, ValueError):
             return None
         extraction = parse_vision_json(str(data.get("response", "")))
         if extraction is not None:
@@ -169,7 +169,7 @@ class OpenAICompatibleVisionExtractor:
                 timeout_seconds=self._timeout_seconds,
                 api_key=self._api_key,
             )
-        except (OSError, ValueError, urllib.error.URLError):
+        except (OSError, ValueError):
             return None
 
         choices = data.get("choices", [])
@@ -220,12 +220,8 @@ def _register_heif_opener() -> None:
 
 def parse_vision_json(value: str) -> VisionExtraction | None:
     """Parse the model response into normalized fields, or None when unusable."""
-    try:
-        data = json.loads(_extract_json_object(value))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
-
-    if not isinstance(data, dict) or "date" not in data or "total" not in data:
+    data = _first_json_object(value)
+    if data is None or "date" not in data or "total" not in data:
         return None
     if data["date"] is None or data["total"] is None:
         return None
@@ -272,7 +268,7 @@ def post_json(
         raise VisionBackendError(message) from exc
     # urlopen's timeout is per socket operation, so keep a simple total-time guard too.
     if time.monotonic() - started_at > timeout_seconds:
-        return {}
+        raise VisionBackendError(f"Vision LLM request exceeded the {timeout_seconds:g} second timeout.")
     data = json.loads(body.decode("utf-8"))
     return data if isinstance(data, dict) else {}
 
@@ -326,14 +322,16 @@ def _optional_string(value: Any) -> str | None:
     return str(value)
 
 
-def _extract_json_object(value: str) -> str:
+def _first_json_object(value: str) -> dict[str, Any] | None:
     """Allow models to wrap JSON in extra text while still requiring an object."""
-    stripped = value.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        return stripped
-
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError("No JSON object found.")
-    return stripped[start : end + 1]
+    decoder = json.JSONDecoder()
+    start = value.find("{")
+    while start != -1:
+        try:
+            data, _ = decoder.raw_decode(value, start)
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            return data
+        start = value.find("{", start + 1)
+    return None

@@ -174,16 +174,6 @@ def normalize_dir(path: str) -> Path:
     return directory
 
 
-def is_relative_to(path: Path, parent: Path) -> bool:
-    """Return whether path is inside parent, including compatibility with Python 3.10."""
-
-    try:
-        path.relative_to(parent)
-    except ValueError:
-        return False
-    return True
-
-
 def first_missing_parent(path: Path) -> Path | None:
     """Return the highest missing directory needed for path, if any."""
 
@@ -223,7 +213,7 @@ def validate_output_path_safety(
             "filename or pass --allow-risky-output-path if this is intentional."
         )
 
-    if not is_relative_to(output_path, allowed_root):
+    if not output_path.is_relative_to(allowed_root):
         fail(
             f"Output path must be inside the input folder ({allowed_root}). "
             "Pass --allow-risky-output-path if this destination is intentional."
