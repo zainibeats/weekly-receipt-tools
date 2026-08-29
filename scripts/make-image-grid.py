@@ -252,8 +252,6 @@ def make_grid(
 ) -> None:
     """Create and save a JPG grid from image paths."""
 
-    validate_jpeg_output_path(output)
-
     images, skipped_images = preflight_images(images, max_image_pixels)
     print_skipped_images(skipped_images)
     if not images:
@@ -278,7 +276,6 @@ def make_grid(
         column = pasted_count % size.columns
         try:
             with Image.open(image_path) as image:
-                enforce_image_pixel_limit(image, image_path, max_image_pixels)
                 fitted = fit_image(image, cell_width, cell_height)
         except Exception as exc:
             skipped_images.append(SkippedImage(image_path, str(exc)))
