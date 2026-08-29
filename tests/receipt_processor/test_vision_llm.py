@@ -10,16 +10,6 @@ from receipt_processor.vision_llm import EncodedImage, OllamaVisionExtractor, Vi
 
 
 class FakePillowImage:
-    def __enter__(self) -> "FakePillowImage":
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        return None
-
-    def convert(self, mode: str) -> "FakePillowImage":
-        assert mode == "RGB"
-        return self
-
     def thumbnail(self, size: tuple[int, int]) -> None:
         assert size == (768, 768)
 
@@ -110,30 +100,17 @@ def test_post_json_preserves_provider_http_error(monkeypatch) -> None:
         )
 
 
-def test_encode_image_registers_heif_support_for_heic(monkeypatch) -> None:
-    calls: list[str] = []
-
-    monkeypatch.setattr(vision_llm, "_register_heif_opener", lambda: calls.append("registered"))
-    monkeypatch.setattr(vision_llm.ImageOps, "exif_transpose", lambda image: image)
-    monkeypatch.setattr(vision_llm.Image, "open", lambda image_path: FakePillowImage())
-
-    encoded = vision_llm.encode_image(Path("receipt.HEIC"), max_edge=768)
-
-    assert calls == ["registered"]
-    assert encoded == EncodedImage("anBlZw==", "image/jpeg")
-
-
-def test_encode_image_does_not_register_heif_support_for_jpeg(monkeypatch) -> None:
-    calls: list[str] = []
-
-    monkeypatch.setattr(vision_llm, "_register_heif_opener", lambda: calls.append("registered"))
-    monkeypatch.setattr(vision_llm.ImageOps, "exif_transpose", lambda image: image)
-    monkeypatch.setattr(vision_llm.Image, "open", lambda image_path: FakePillowImage())
+def test_encode_image_resizes_and_base64_encodes_a_jpeg(monkeypatch) -> None:
+    monkeypatch.setattr(vision_llm, "load_rgb_image", lambda image_path: FakePillowImage())
 
     encoded = vision_llm.encode_image(Path("receipt.jpg"), max_edge=768)
 
-    assert calls == []
     assert encoded == EncodedImage("anBlZw==", "image/jpeg")
+
+
+def test_encode_image_rejects_a_non_positive_max_edge() -> None:
+    with pytest.raises(ValueError, match="max_edge"):
+        vision_llm.encode_image(Path("receipt.jpg"), max_edge=0)
 
 
 def test_post_json_reports_a_slow_response_as_a_timeout(monkeypatch) -> None:

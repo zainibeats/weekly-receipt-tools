@@ -25,6 +25,23 @@ DEFAULT_DETAILS_PATH = Path("receipt_results.json")
 def main() -> None:
     """Run the receipt processor command line interface."""
     load_env_file()
+    args = build_parser().parse_args()
+    vision_extractor = _build_vision_extractor(args)
+    daily_totals, receipts, failures = process_directory(
+        args.input_dir,
+        vision_extractor,
+        min_date=args.min_date,
+        max_date=args.max_date,
+        ocr_extractor=RapidOCRExtractor() if args.ocr_fallback else None,
+    )
+
+    args.output.write_text(json.dumps(daily_totals, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_processing_details_json(args.details, receipts, failures)
+    print(_format_summary(daily_totals, failures, args.output, args.details))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command line parser, defaulting options from the loaded environment."""
     parser = argparse.ArgumentParser(description="Extract receipt totals and aggregate spend by day.")
     parser.add_argument("input_dir", type=Path, help="Directory containing receipt images.")
     parser.add_argument(
@@ -82,19 +99,7 @@ def main() -> None:
         default=env_bool("RECEIPT_OCR_FALLBACK"),
         help="Use local RapidOCR after a missing or invalid vision result.",
     )
-    args = parser.parse_args()
-    vision_extractor = _build_vision_extractor(args)
-    daily_totals, receipts, failures = process_directory(
-        args.input_dir,
-        vision_extractor,
-        min_date=args.min_date,
-        max_date=args.max_date,
-        ocr_extractor=RapidOCRExtractor() if args.ocr_fallback else None,
-    )
-
-    args.output.write_text(json.dumps(daily_totals, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    write_processing_details_json(args.details, receipts, failures)
-    print(_format_summary(daily_totals, failures, args.output, args.details))
+    return parser
 
 
 def _parse_cli_date(value: str) -> date:

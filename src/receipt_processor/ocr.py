@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from PIL import Image, ImageFilter, ImageOps
 
-from receipt_processor.vision_llm import HEIF_EXTENSIONS, _register_heif_opener
+from receipt_processor.images import load_rgb_image
 
 
 @dataclass(frozen=True)
@@ -40,13 +40,8 @@ class RapidOCRExtractor:
         return RapidOCR(params={"Global.log_level": "critical"})
 
     def extract(self, image_path: Path) -> tuple[OCRVariant, ...]:
-        if image_path.suffix.lower() in HEIF_EXTENSIONS:
-            _register_heif_opener()
-
-        with Image.open(image_path) as source:
-            image = ImageOps.exif_transpose(source).convert("RGB")
-            variants = _image_variants(image)
-            return tuple(self._recognize(variant) for variant in variants)
+        variants = _image_variants(load_rgb_image(image_path))
+        return tuple(self._recognize(variant) for variant in variants)
 
     def _recognize(self, image: Image.Image) -> OCRVariant:
         np = _load_numpy()
