@@ -14,15 +14,6 @@ class ExtractedReceipt:
     confidence: float
     method: str
 
-    def to_dict(self) -> dict[str, float | str]:
-        return {
-            "file": self.file,
-            "date": self.date,
-            "total": self.total,
-            "confidence": self.confidence,
-            "method": self.method,
-        }
-
 
 @dataclass(frozen=True)
 class ProcessingFailure:

@@ -22,8 +22,8 @@ single-purpose modules handle extraction, validation, aggregation, and output.
    dates, and non-positive or unusually large totals.
 9. `models.py` stores accepted receipts and processing failures.
 10. `aggregation.py` sums accepted totals by day.
-11. `storage.py` writes detailed receipt and failure JSON.
-12. `cli.py` writes daily totals JSON and prints a human-readable summary.
+11. `storage.py` writes the daily totals and receipt detail JSON files.
+12. `cli.py` prints a human-readable summary.
 
 ## Module Map
 
@@ -37,7 +37,7 @@ single-purpose modules handle extraction, validation, aggregation, and output.
 - `ocr.py`: optional lazy RapidOCR integration and image enhancement.
 - `ocr_parser.py`: deterministic OCR date and total candidate parsing.
 - `pipeline.py`: image discovery and end-to-end receipt processing.
-- `storage.py`: JSON detail output.
+- `storage.py`: atomic JSON output for daily totals and receipt details.
 - `validation.py`: date and total validation rules.
 - `vision_llm.py`: local command, Ollama, and OpenAI-compatible vision
   extractors plus shared image encoding and JSON parsing helpers.

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from datetime import date
 from pathlib import Path
@@ -10,7 +9,7 @@ from receipt_processor.config import env_bool, env_float, env_int, load_env_file
 from receipt_processor.models import ProcessingFailure
 from receipt_processor.ocr import RapidOCRExtractor
 from receipt_processor.pipeline import process_directory
-from receipt_processor.storage import write_processing_details_json
+from receipt_processor.storage import write_daily_totals_json, write_processing_details_json
 from receipt_processor.vision_llm import (
     CommandVisionExtractor,
     OllamaVisionExtractor,
@@ -35,7 +34,7 @@ def main() -> None:
         ocr_extractor=RapidOCRExtractor() if args.ocr_fallback else None,
     )
 
-    args.output.write_text(json.dumps(daily_totals, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_daily_totals_json(args.output, daily_totals)
     write_processing_details_json(args.details, receipts, failures)
     print(_format_summary(daily_totals, failures, args.output, args.details))
 
