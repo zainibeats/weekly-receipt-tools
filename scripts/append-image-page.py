@@ -5,27 +5,28 @@ from __future__ import annotations
 
 import argparse
 import multiprocessing
-import os
 import queue
 import sys
 import tempfile
 from pathlib import Path
 
+from _common import (
+    DEFAULT_MAX_IMAGE_PIXELS,
+    Image,
+    ImageOps,
+    UnidentifiedImageError,
+    draft_image_for_size,
+    enforce_image_pixel_limit,
+    fail,
+    validate_output_path_safety,
+    write_atomically,
+)
 
 LETTER_SIZE_INCHES = (8.5, 11.0)
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg"}
-DEFAULT_MAX_IMAGE_PIXELS = 80_000_000
 DEFAULT_MAX_PDF_PAGES = 10
 DEFAULT_MAX_PDF_BYTES = 25 * 1024 * 1024
 DEFAULT_PDF_TIMEOUT_SECONDS = 15.0
-WINDOWS_RESERVED_NAMES = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    *(f"COM{index}" for index in range(1, 10)),
-    *(f"LPT{index}" for index in range(1, 10)),
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,36 +112,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fail(message: str) -> None:
-    """Print an error message and exit with status code 1."""
-
-    print(f"ERROR: {message}", file=sys.stderr)
-    raise SystemExit(1)
-
-
-def load_pillow() -> tuple[object, object, type[Exception]]:
-    """Load Pillow objects or exit with an install hint."""
-
-    try:
-        from PIL import Image, ImageOps, UnidentifiedImageError
-    except ModuleNotFoundError:
-        fail(
-            "Missing dependency Pillow. Run: "
-            "python -m pip install -r requirements.txt"
-        )
-    return Image, ImageOps, UnidentifiedImageError
-
-
 def load_pypdf() -> tuple[object, object]:
     """Load pypdf objects or exit with an install hint."""
 
     try:
         from pypdf import PdfReader, PdfWriter
     except ModuleNotFoundError:
-        fail(
-            "Missing dependency pypdf. Run: "
-            "python -m pip install -r requirements.txt"
-        )
+        fail("Missing dependency pypdf. Run: python -m pip install -r requirements.txt")
     return PdfReader, PdfWriter
 
 
@@ -165,60 +143,6 @@ def resolve_output_path(output: str | None, image_path: Path) -> Path:
     if output is None:
         return default_output_path(image_path)
     return Path(output).expanduser().resolve()
-
-
-def first_missing_parent(path: Path) -> Path | None:
-    """Return the highest missing directory needed for path, if any."""
-
-    missing: list[Path] = []
-    current = path.parent
-    while not current.exists():
-        missing.append(current)
-        if current.parent == current:
-            break
-        current = current.parent
-    return missing[-1] if missing else None
-
-
-def has_windows_reserved_name(path: Path) -> bool:
-    """Return whether any path component is a reserved Windows device name."""
-
-    for part in path.parts:
-        stem = part.split(".", 1)[0].upper()
-        if stem in WINDOWS_RESERVED_NAMES:
-            return True
-    return False
-
-
-def validate_output_path_safety(
-    output_path: Path,
-    allowed_roots: list[Path],
-    allow_risky_output_path: bool,
-) -> None:
-    """Refuse output paths that are easy to mistype into risky locations."""
-
-    if allow_risky_output_path:
-        return
-
-    if has_windows_reserved_name(output_path):
-        fail(
-            "Output path contains a Windows reserved device name. Choose a different "
-            "filename or pass --allow-risky-output-path if this is intentional."
-        )
-
-    if not any(output_path.is_relative_to(root) for root in allowed_roots):
-        roots = ", ".join(str(root) for root in allowed_roots)
-        fail(
-            f"Output path must be inside the image or PDF folder ({roots}). "
-            "Pass --allow-risky-output-path if this destination is intentional."
-        )
-
-    missing_parent = first_missing_parent(output_path)
-    if missing_parent is not None and missing_parent != output_path.parent:
-        fail(
-            f"Output path would create multiple missing folders starting at {missing_parent}. "
-            "Create the folders first or pass --allow-risky-output-path if this is intentional."
-        )
 
 
 def validate_args(
@@ -261,52 +185,6 @@ def validate_args(
         fail("--dpi must be between 72 and 600")
 
 
-def draft_image_for_size(image: object, width: int, height: int) -> None:
-    """Ask Pillow to decode large JPEGs near the size that will be used."""
-
-    draft = getattr(image, "draft", None)
-    if callable(draft):
-        draft("RGB", (width, height))
-
-
-def fsync_directory(directory: Path) -> None:
-    """Best-effort fsync for directory entry changes on platforms that allow it."""
-
-    try:
-        directory_fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-
-    try:
-        os.fsync(directory_fd)
-    except OSError:
-        pass
-    finally:
-        os.close(directory_fd)
-
-
-def publish_temp_file(temp_path: Path, destination: Path, overwrite: bool) -> None:
-    """Move a completed temporary file into place without racing overwrite checks."""
-
-    if overwrite:
-        temp_path.replace(destination)
-        return
-
-    # A hard link creates the destination only if it does not already exist.
-    try:
-        os.link(temp_path, destination)
-    except FileExistsError:
-        raise FileExistsError(
-            f"Output already exists. Pass --overwrite to replace it: {destination}"
-        ) from None
-    except OSError as exc:
-        raise OSError(
-            f"Could not create output without overwrite risk: {destination} ({exc})"
-        ) from exc
-    else:
-        temp_path.unlink(missing_ok=True)
-
-
 def make_contained_image_pdf(
     image_path: Path,
     pdf_path: Path,
@@ -315,20 +193,13 @@ def make_contained_image_pdf(
 ) -> None:
     """Create a one-page PDF with the image centered on a letter-size page."""
 
-    Image, ImageOps, UnidentifiedImageError = load_pillow()
-
     width_inches, height_inches = LETTER_SIZE_INCHES
     page_width = round(width_inches * dpi)
     page_height = round(height_inches * dpi)
 
     try:
         with Image.open(image_path) as image:
-            image_pixels = image.width * image.height
-            if image_pixels > max_image_pixels:
-                fail(
-                    f"{image_path} is {image_pixels:,} pixels, above "
-                    f"--max-image-pixels ({max_image_pixels:,}). Resize it or raise the limit."
-                )
+            enforce_image_pixel_limit(image, image_path, max_image_pixels)
             draft_image_for_size(image, page_width, page_height)
             image = ImageOps.exif_transpose(image)
             image.thumbnail((page_width, page_height), Image.Resampling.LANCZOS)
@@ -355,28 +226,7 @@ def make_contained_image_pdf(
 def write_pdf_atomically(writer: object, output_pdf: Path, overwrite: bool) -> None:
     """Save a PDF durably through a temporary file before replacing the destination."""
 
-    output_pdf.parent.mkdir(parents=True, exist_ok=True)
-    fsync_directory(output_pdf.parent)
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=output_pdf.parent,
-            prefix=f".{output_pdf.name}.",
-            suffix=".pdf",
-            delete=False,
-        ) as temp_file:
-            temp_path = Path(temp_file.name)
-            writer.write(temp_file)  # type: ignore[attr-defined]
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
-        fsync_directory(output_pdf.parent)
-        publish_temp_file(temp_path, output_pdf, overwrite)
-        fsync_directory(output_pdf.parent)
-    except Exception as exc:
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
-            fsync_directory(output_pdf.parent)
-        fail(f"Could not write output PDF {output_pdf}: {exc}")
+    write_atomically(output_pdf, overwrite, writer.write)  # type: ignore[attr-defined]
 
 
 def decrypt_reader_if_needed(
@@ -571,7 +421,6 @@ def main() -> None:
         args.allow_risky_output_path,
     )
 
-    Image, _, _ = load_pillow()
     Image.MAX_IMAGE_PIXELS = args.max_image_pixels
 
     with tempfile.TemporaryDirectory() as temp_dir:

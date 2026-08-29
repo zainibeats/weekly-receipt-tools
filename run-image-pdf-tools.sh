@@ -19,7 +19,7 @@ cd "$SCRIPT_DIR" || exit 1
 echo "Image PDF Tools"
 echo
 
-for required_file in scripts/make-image-grid.py scripts/append-image-page.py requirements.txt; do
+for required_file in scripts/make-image-grid.py scripts/append-image-page.py scripts/_common.py requirements.txt; do
     if [ ! -f "$required_file" ]; then
         echo "ERROR: $required_file was not found."
         echo "Put this file in the same folder as the project scripts."

@@ -5,27 +5,27 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from _common import (
+    DEFAULT_MAX_IMAGE_PIXELS,
+    Image,
+    ImageOps,
+    draft_image_for_size,
+    enforce_image_pixel_limit,
+    fail,
+    validate_output_path_safety,
+    write_atomically,
+)
 
 HEIC_EXTENSIONS = {".heic", ".heif"}
 JPEG_EXTENSIONS = {".jpg", ".jpeg"}
 PNG_EXTENSIONS = {".png"}
 SUPPORTED_EXTENSIONS = HEIC_EXTENSIONS | JPEG_EXTENSIONS | PNG_EXTENSIONS
 DEFAULT_MAX_IMAGES = 24
-DEFAULT_MAX_IMAGE_PIXELS = 80_000_000
 DEFAULT_MAX_OUTPUT_PIXELS = 50_000_000
-WINDOWS_RESERVED_NAMES = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    *(f"COM{index}" for index in range(1, 10)),
-    *(f"LPT{index}" for index in range(1, 10)),
-}
 
 
 @dataclass(frozen=True)
@@ -131,36 +131,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fail(message: str) -> None:
-    """Print an error message and exit with status code 1."""
-
-    print(f"ERROR: {message}", file=sys.stderr)
-    raise SystemExit(1)
-
-
-def load_pillow() -> tuple[object, object, type[Exception]]:
-    """Load Pillow objects or exit with an install hint."""
-
-    try:
-        from PIL import Image, ImageOps, UnidentifiedImageError
-    except ModuleNotFoundError:
-        fail(
-            "Missing dependency Pillow. Run: "
-            "python -m pip install -r requirements.txt"
-        )
-    return Image, ImageOps, UnidentifiedImageError
-
-
 def ensure_heif_support() -> None:
     """Register HEIC/HEIF support for Pillow."""
 
     try:
         from pillow_heif import register_heif_opener
     except ModuleNotFoundError:
-        fail(
-            "Missing dependency pillow-heif. Run: "
-            "python -m pip install -r requirements.txt"
-        )
+        fail("Missing dependency pillow-heif. Run: python -m pip install -r requirements.txt")
 
     register_heif_opener()
 
@@ -172,59 +149,6 @@ def normalize_dir(path: str) -> Path:
     if not directory.is_dir():
         fail(f"Input directory does not exist: {directory}")
     return directory
-
-
-def first_missing_parent(path: Path) -> Path | None:
-    """Return the highest missing directory needed for path, if any."""
-
-    missing: list[Path] = []
-    current = path.parent
-    while not current.exists():
-        missing.append(current)
-        if current.parent == current:
-            break
-        current = current.parent
-    return missing[-1] if missing else None
-
-
-def has_windows_reserved_name(path: Path) -> bool:
-    """Return whether any path component is a reserved Windows device name."""
-
-    for part in path.parts:
-        stem = part.split(".", 1)[0].upper()
-        if stem in WINDOWS_RESERVED_NAMES:
-            return True
-    return False
-
-
-def validate_output_path_safety(
-    output_path: Path,
-    allowed_root: Path,
-    allow_risky_output_path: bool,
-) -> None:
-    """Refuse output paths that are easy to mistype into risky locations."""
-
-    if allow_risky_output_path:
-        return
-
-    if has_windows_reserved_name(output_path):
-        fail(
-            "Output path contains a Windows reserved device name. Choose a different "
-            "filename or pass --allow-risky-output-path if this is intentional."
-        )
-
-    if not output_path.is_relative_to(allowed_root):
-        fail(
-            f"Output path must be inside the input folder ({allowed_root}). "
-            "Pass --allow-risky-output-path if this destination is intentional."
-        )
-
-    missing_parent = first_missing_parent(output_path)
-    if missing_parent is not None and missing_parent != output_path.parent:
-        fail(
-            f"Output path would create multiple missing folders starting at {missing_parent}. "
-            "Create the folders first or pass --allow-risky-output-path if this is intentional."
-        )
 
 
 def validate_jpeg_output_path(output_path: Path) -> None:
@@ -247,28 +171,12 @@ def collect_images(input_dir: Path) -> list[Path]:
     )
 
 
-def enforce_image_pixel_limit(
-    image: object,
-    image_path: Path,
-    max_image_pixels: int,
-) -> None:
-    """Exit if an image is larger than the configured pixel limit."""
-
-    image_pixels = image.width * image.height
-    if image_pixels > max_image_pixels:
-        fail(
-            f"{image_path} is {image_pixels:,} pixels, above --max-image-pixels "
-            f"({max_image_pixels:,}). Resize it or raise the limit."
-        )
-
-
 def preflight_images(
     images: list[Path],
     max_image_pixels: int,
 ) -> tuple[list[Path], list[SkippedImage]]:
     """Return images that Pillow can identify without failing the whole job."""
 
-    Image, _, _ = load_pillow()
     usable_images: list[Path] = []
     skipped_images: list[SkippedImage] = []
 
@@ -293,46 +201,8 @@ def print_skipped_images(skipped_images: list[SkippedImage]) -> None:
         print(f"skipped: {skipped.path} ({skipped.reason})", file=sys.stderr)
 
 
-def fsync_directory(directory: Path) -> None:
-    """Best-effort fsync for directory entry changes on platforms that allow it."""
-
-    try:
-        directory_fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-
-    try:
-        os.fsync(directory_fd)
-    except OSError:
-        pass
-    finally:
-        os.close(directory_fd)
-
-
-def publish_temp_file(temp_path: Path, destination: Path, overwrite: bool) -> None:
-    """Move a completed temporary file into place without racing overwrite checks."""
-
-    if overwrite:
-        temp_path.replace(destination)
-        return
-
-    # A hard link creates the destination only if it does not already exist.
-    try:
-        os.link(temp_path, destination)
-    except FileExistsError:
-        raise FileExistsError(
-            f"Output already exists. Pass --overwrite to replace it: {destination}"
-        ) from None
-    except OSError as exc:
-        raise OSError(
-            f"Could not create output without overwrite risk: {destination} ({exc})"
-        ) from exc
-    else:
-        temp_path.unlink(missing_ok=True)
-
-
 def save_image_atomically(
-    image: object,
+    image: Image.Image,
     destination: Path,
     image_format: str,
     overwrite: bool,
@@ -340,28 +210,11 @@ def save_image_atomically(
 ) -> None:
     """Save an image durably through a temporary file before replacing the destination."""
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    fsync_directory(destination.parent)
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=destination.parent,
-            prefix=f".{destination.name}.",
-            suffix=destination.suffix or ".tmp",
-            delete=False,
-        ) as temp_file:
-            temp_path = Path(temp_file.name)
-            image.save(temp_file, image_format, **save_kwargs)
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
-        fsync_directory(destination.parent)
-        publish_temp_file(temp_path, destination, overwrite)
-        fsync_directory(destination.parent)
-    except OSError as exc:
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
-            fsync_directory(destination.parent)
-        fail(f"Could not write {destination}: {exc}")
+    write_atomically(
+        destination,
+        overwrite,
+        lambda temp_file: image.save(temp_file, image_format, **save_kwargs),
+    )
 
 
 def balanced_grid_size(count: int) -> GridSize:
@@ -374,18 +227,9 @@ def balanced_grid_size(count: int) -> GridSize:
     return GridSize(rows=rows, columns=columns)
 
 
-def draft_image_for_size(image: object, width: int, height: int) -> None:
-    """Ask Pillow to decode large JPEGs near the size that will be used."""
-
-    draft = getattr(image, "draft", None)
-    if callable(draft):
-        draft("RGB", (width, height))
-
-
-def fit_image(image: object, cell_width: int, cell_height: int) -> object:
+def fit_image(image: Image.Image, cell_width: int, cell_height: int) -> Image.Image:
     """Return an RGB copy of an image fitted within a grid cell."""
 
-    Image, ImageOps, _ = load_pillow()
     draft_image_for_size(image, cell_width, cell_height)
     image = ImageOps.exif_transpose(image)
     image.thumbnail((cell_width, cell_height), Image.Resampling.LANCZOS)
@@ -409,7 +253,6 @@ def make_grid(
     """Create and save a JPG grid from image paths."""
 
     validate_jpeg_output_path(output)
-    Image, _, _ = load_pillow()
 
     images, skipped_images = preflight_images(images, max_image_pixels)
     print_skipped_images(skipped_images)
@@ -482,7 +325,6 @@ def main() -> None:
     if args.max_output_pixels < 1:
         fail("--max-output-pixels must be positive")
 
-    Image, _, _ = load_pillow()
     Image.MAX_IMAGE_PIXELS = args.max_image_pixels
 
     input_dir = normalize_dir(args.input_dir)
@@ -490,11 +332,7 @@ def main() -> None:
     if not output.is_absolute():
         output = (input_dir / output).resolve()
     validate_jpeg_output_path(output)
-    validate_output_path_safety(
-        output,
-        input_dir,
-        args.allow_risky_output_path,
-    )
+    validate_output_path_safety(output, [input_dir], args.allow_risky_output_path)
     if output.exists() and not args.overwrite:
         fail(f"Output already exists. Pass --overwrite to replace it: {output}")
 

@@ -15,7 +15,11 @@ from unittest.mock import patch
 def load_script_module(name: str, filename: str) -> object:
     """Load a script with a hyphenated filename as an importable test module."""
 
-    script_path = Path(__file__).resolve().parents[1] / "scripts" / filename
+    scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
+    # Scripts import their shared helpers the same way they do when run by path.
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    script_path = scripts_dir / filename
     spec = importlib.util.spec_from_file_location(name, script_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {filename}")
@@ -202,13 +206,13 @@ class AtomicWriteTests(unittest.TestCase):
             with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 make_image_grid.validate_output_path_safety(
                     output,
-                    input_dir,
+                    [input_dir],
                     allow_risky_output_path=False,
                 )
 
             make_image_grid.validate_output_path_safety(
                 output,
-                input_dir,
+                [input_dir],
                 allow_risky_output_path=True,
             )
 
@@ -220,7 +224,7 @@ class AtomicWriteTests(unittest.TestCase):
             with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 make_image_grid.validate_output_path_safety(
                     output,
-                    input_dir,
+                    [input_dir],
                     allow_risky_output_path=False,
                 )
 
@@ -457,11 +461,7 @@ class AtomicWriteTests(unittest.TestCase):
                 return object()
 
         with (
-            patch.object(
-                make_image_grid,
-                "load_pillow",
-                return_value=(FakeImageModule, object(), Exception),
-            ),
+            patch.object(make_image_grid, "Image", FakeImageModule),
             patch.object(
                 make_image_grid,
                 "preflight_images",

@@ -23,6 +23,14 @@ if not exist "scripts\append-image-page.py" (
     exit /b 1
 )
 
+if not exist "scripts\_common.py" (
+    echo ERROR: scripts\_common.py was not found.
+    echo Put this file in the same folder as the project scripts.
+    echo.
+    pause
+    exit /b 1
+)
+
 if not exist "requirements.txt" (
     echo ERROR: requirements.txt was not found.
     echo Put this file in the same folder as the project scripts.
