@@ -7,9 +7,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.tmp
-test-receipts/
 daily_totals.json
 receipt_results.json
 daily_totals.csv
 weekly_totals.json
-test-images/
